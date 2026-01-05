@@ -326,9 +326,15 @@ export default function ShoppingListPage() {
       .filter(item => !item.onHold)
       .reduce((sum, item) => sum + item.total, 0);
     
-    // Set default target to current total + 10 (rounded up to nearest 5)
-    const suggestedTarget = Math.ceil((currentTotal + 10) / 5) * 5;
-    setFillTargetAmount(suggestedTarget);
+    // Load saved target amount or calculate a suggested one
+    const savedTarget = localStorage.getItem('fillTargetAmount');
+    if (savedTarget && Number(savedTarget) > 0) {
+      setFillTargetAmount(Number(savedTarget));
+    } else {
+      // Set default target to current total + 10 (rounded up to nearest 5)
+      const suggestedTarget = Math.ceil((currentTotal + 10) / 5) * 5;
+      setFillTargetAmount(suggestedTarget);
+    }
     
     // Get items from all shopping lists with purchase frequency
     const allLists = storageService.getAllLists();
@@ -438,40 +444,6 @@ export default function ShoppingListPage() {
     });
   };
 
-  // Auto-suggest commonly purchased items that add up to meet the target
-  const getSuggestedFillItems = () => {
-    const currentTotal = getCurrentListTotal();
-    const selectedTotal = getFillItemsTotal();
-    const gap = fillTargetAmount - currentTotal - selectedTotal;
-    
-    if (gap <= 0) return [];
-    
-    // Get unselected items sorted by frequency (most common first), then by price
-    const availableItems = fillSelectedItems
-      .filter(item => !item.selected)
-      .sort((a, b) => {
-        // First sort by frequency (descending)
-        const freqDiff = (b.frequency || 0) - (a.frequency || 0);
-        if (freqDiff !== 0) return freqDiff;
-        // Then by price (descending) to fill gap faster
-        return b.price - a.price;
-      });
-    
-    // Select items that add up to meet the target
-    const suggestions: typeof availableItems = [];
-    let runningTotal = 0;
-    
-    for (const item of availableItems) {
-      if (runningTotal >= gap) break;
-      if (item.price <= gap - runningTotal + 5) { // Allow slight overage
-        suggestions.push(item);
-        runningTotal += item.price;
-      }
-    }
-    
-    return suggestions.slice(0, 6); // Return up to 6 suggestions
-  };
-
   // Get the scroll target index - the first item whose price >= the gap
   const getScrollTargetIndex = () => {
     const currentTotal = getCurrentListTotal();
@@ -493,16 +465,18 @@ export default function ShoppingListPage() {
   // Auto-scroll to target item when Fill Items panel opens
   useEffect(() => {
     if (showFillItemsPanel && fillSelectedItems.length > 0) {
-      // Small delay to ensure DOM is rendered
+      // Longer delay to ensure DOM is fully rendered and refs are populated
       setTimeout(() => {
         const targetIndex = getScrollTargetIndex();
-        const targetRef = fillItemRefs.current[targetIndex];
-        if (targetRef && fillItemsListRef.current) {
-          targetRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (targetIndex >= 0 && targetIndex < fillItemRefs.current.length) {
+          const targetRef = fillItemRefs.current[targetIndex];
+          if (targetRef) {
+            targetRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
         }
-      }, 100);
+      }, 300);
     }
-  }, [showFillItemsPanel, fillSelectedItems.length]);
+  }, [showFillItemsPanel, fillSelectedItems.length, fillTargetAmount]);
 
   // Update handleRunBinPacking to use groupSpecs and call the new bin-packing logic
   const handleRunBinPacking = () => {
@@ -1736,17 +1710,21 @@ export default function ShoppingListPage() {
             </Button>
           </div>
 
-          {/* Target Amount Input */}
-          <div className="p-4 border-b border-gray-100">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Target Total ({currencySymbol})</label>
+          {/* Target Amount Input - inline */}
+          <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-700">Target Total ({currencySymbol})</label>
             <Input
               type="number"
               inputMode="decimal"
-              value={fillTargetAmount}
-              onChange={(e) => setFillTargetAmount(Number(e.target.value))}
+              value={fillTargetAmount || ''}
+              onChange={(e) => {
+                const value = e.target.value === '' ? 0 : Number(e.target.value);
+                setFillTargetAmount(value);
+                localStorage.setItem('fillTargetAmount', String(value));
+              }}
               placeholder="50.00"
               step="0.01"
-              className="w-full px-4 py-2 text-base"
+              className="w-28 px-3 py-1 text-base text-right"
             />
           </div>
 
@@ -1773,31 +1751,6 @@ export default function ShoppingListPage() {
               <span>{currencySymbol}{Math.max(0, fillTargetAmount - getCurrentListTotal() - getFillItemsTotal()).toFixed(2)}</span>
             </div>
           </div>
-
-          {/* Suggested Items */}
-          {getSuggestedFillItems().length > 0 && (
-            <div className="p-3 border-b border-gray-100">
-              <p className="text-xs font-medium text-gray-500 mb-2">Commonly purchased items to fill gap:</p>
-              <div className="flex flex-wrap gap-1">
-                {getSuggestedFillItems().map((item) => {
-                  const originalIndex = fillSelectedItems.findIndex(i => i.name === item.name);
-                  return (
-                    <button
-                      key={item.name}
-                      onClick={() => handleFillItemToggle(originalIndex)}
-                      className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full hover:bg-blue-100 transition-colors flex items-center gap-1"
-                    >
-                      <span>{item.name}</span>
-                      <span className="text-blue-500">({currencySymbol}{item.price.toFixed(2)})</span>
-                      {item.frequency && item.frequency > 1 && (
-                        <span className="bg-blue-200 text-blue-800 px-1 rounded text-[10px]">×{item.frequency}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Available Items List */}
           <div ref={fillItemsListRef} className="flex-1 overflow-y-auto p-3">
