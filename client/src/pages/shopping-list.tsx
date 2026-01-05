@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useRoute } from "wouter";
 import { ShoppingList, ShoppingItem, ShoppingGroup, InsertShoppingItem } from "@shared/schema";
 import { storageService } from "@/lib/storage";
@@ -75,7 +75,9 @@ export default function ShoppingListPage() {
   // Add state for Fill Items feature
   const [showFillItemsPanel, setShowFillItemsPanel] = useState<boolean>(false);
   const [fillTargetAmount, setFillTargetAmount] = useState<number>(50);
-  const [fillSelectedItems, setFillSelectedItems] = useState<{ name: string; price: number; quantity: number; selected: boolean }[]>([]);
+  const [fillSelectedItems, setFillSelectedItems] = useState<{ name: string; price: number; quantity: number; selected: boolean; frequency?: number }[]>([]);
+  const fillItemsListRef = useRef<HTMLDivElement>(null);
+  const fillItemRefs = useRef<(HTMLDivElement | null)[]>([]);
   
   // For manually added items, we won't fetch images from the web
   // Only items captured via camera will have product images
@@ -328,11 +330,11 @@ export default function ShoppingListPage() {
     const suggestedTarget = Math.ceil((currentTotal + 10) / 5) * 5;
     setFillTargetAmount(suggestedTarget);
     
-    // Get items from all shopping lists (more reliable than autocomplete)
+    // Get items from all shopping lists with purchase frequency
     const allLists = storageService.getAllLists();
-    const itemsMap = new Map<string, { name: string; price: number }>();
+    const itemsMap = new Map<string, { name: string; price: number; frequency: number }>();
     
-    // Collect unique items from all lists, keeping the latest price
+    // Collect unique items from all lists, tracking frequency and latest price
     allLists.forEach(list => {
       list.items.forEach(item => {
         // Clean the item name (remove weight, discount info)
@@ -341,10 +343,18 @@ export default function ShoppingListPage() {
           .trim();
         
         if (cleanName && item.price > 0) {
-          // Use lowercase key for deduplication, but keep original casing
           const key = cleanName.toLowerCase();
-          // Always update to get the latest price
-          itemsMap.set(key, { name: cleanName, price: item.price });
+          const existing = itemsMap.get(key);
+          if (existing) {
+            // Update price and increment frequency
+            itemsMap.set(key, { 
+              name: cleanName, 
+              price: item.price, 
+              frequency: existing.frequency + 1 
+            });
+          } else {
+            itemsMap.set(key, { name: cleanName, price: item.price, frequency: 1 });
+          }
         }
       });
     });
@@ -354,14 +364,16 @@ export default function ShoppingListPage() {
       item.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim()
     ));
     
+    // Sort by price (ascending) for the main list
     const availableItems = Array.from(itemsMap.values())
       .filter(item => !existingItemNames.has(item.name.toLowerCase()))
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => a.price - b.price)
       .map(item => ({
         name: item.name,
         price: item.price,
         quantity: 1,
-        selected: false
+        selected: false,
+        frequency: item.frequency
       }));
     
     setFillSelectedItems(availableItems);
@@ -426,20 +438,74 @@ export default function ShoppingListPage() {
     });
   };
 
-  // Auto-suggest items to fill the gap
+  // Auto-suggest commonly purchased items that add up to meet the target
   const getSuggestedFillItems = () => {
     const currentTotal = getCurrentListTotal();
-    const gap = fillTargetAmount - currentTotal;
+    const selectedTotal = getFillItemsTotal();
+    const gap = fillTargetAmount - currentTotal - selectedTotal;
     
     if (gap <= 0) return [];
     
-    // Find items that could help fill the gap (sorted by how close they are to filling it)
+    // Get unselected items sorted by frequency (most common first), then by price
     const availableItems = fillSelectedItems
-      .filter(item => !item.selected && item.price <= gap)
-      .sort((a, b) => b.price - a.price); // Prefer higher-priced items to minimize count
+      .filter(item => !item.selected)
+      .sort((a, b) => {
+        // First sort by frequency (descending)
+        const freqDiff = (b.frequency || 0) - (a.frequency || 0);
+        if (freqDiff !== 0) return freqDiff;
+        // Then by price (descending) to fill gap faster
+        return b.price - a.price;
+      });
     
-    return availableItems.slice(0, 5); // Return top 5 suggestions
+    // Select items that add up to meet the target
+    const suggestions: typeof availableItems = [];
+    let runningTotal = 0;
+    
+    for (const item of availableItems) {
+      if (runningTotal >= gap) break;
+      if (item.price <= gap - runningTotal + 5) { // Allow slight overage
+        suggestions.push(item);
+        runningTotal += item.price;
+      }
+    }
+    
+    return suggestions.slice(0, 6); // Return up to 6 suggestions
   };
+
+  // Get the scroll target index - the item where cumulative total exceeds the gap
+  const getScrollTargetIndex = () => {
+    const currentTotal = getCurrentListTotal();
+    const selectedTotal = getFillItemsTotal();
+    const gap = fillTargetAmount - currentTotal - selectedTotal;
+    
+    if (gap <= 0) return 0;
+    
+    // Items are sorted by price ascending
+    let cumulative = 0;
+    for (let i = 0; i < fillSelectedItems.length; i++) {
+      if (!fillSelectedItems[i].selected) {
+        cumulative += fillSelectedItems[i].price;
+        if (cumulative >= gap) {
+          return i;
+        }
+      }
+    }
+    return 0;
+  };
+
+  // Auto-scroll to target item when Fill Items panel opens
+  useEffect(() => {
+    if (showFillItemsPanel && fillSelectedItems.length > 0) {
+      // Small delay to ensure DOM is rendered
+      setTimeout(() => {
+        const targetIndex = getScrollTargetIndex();
+        const targetRef = fillItemRefs.current[targetIndex];
+        if (targetRef && fillItemsListRef.current) {
+          targetRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+  }, [showFillItemsPanel, fillSelectedItems.length]);
 
   // Update handleRunBinPacking to use groupSpecs and call the new bin-packing logic
   const handleRunBinPacking = () => {
@@ -1658,156 +1724,181 @@ export default function ShoppingListPage() {
         </div>
       )}
 
-      {/* Fill Items Panel */}
+      {/* Fill Items Panel - Full Screen */}
       {showFillItemsPanel && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50 max-w-md mx-auto">
-          <div className="bg-white w-full max-w-md rounded-t-lg p-4 max-h-[80vh] overflow-hidden border-t-2 border-l-2 border-r-2 border-gray-200 shadow-xl flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-gray-900">Fill Items</h3>
-              <Button
-                variant="ghost"
-                onClick={() => setShowFillItemsPanel(false)}
-                className="p-2 hover:bg-gray-100"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
+        <div className="fixed inset-0 bg-white z-50 flex flex-col max-w-md mx-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">Fill Items</h3>
+            <Button
+              variant="ghost"
+              onClick={() => setShowFillItemsPanel(false)}
+              className="p-2 hover:bg-gray-100"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
 
-            {/* Target Amount Input */}
-            <div className="mb-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Target Total ({currencySymbol})</label>
-              <Input
-                type="number"
-                inputMode="decimal"
-                value={fillTargetAmount}
-                onChange={(e) => setFillTargetAmount(Number(e.target.value))}
-                placeholder="50.00"
-                step="0.01"
-                className="w-full px-4 py-2 text-base"
-              />
-            </div>
+          {/* Target Amount Input */}
+          <div className="p-4 border-b border-gray-100">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Target Total ({currencySymbol})</label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={fillTargetAmount}
+              onChange={(e) => setFillTargetAmount(Number(e.target.value))}
+              placeholder="50.00"
+              step="0.01"
+              className="w-full px-4 py-2 text-base"
+            />
+          </div>
 
-            {/* Summary */}
-            <div className="bg-gray-50 rounded-lg p-3 mb-3">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600">Current list total:</span>
-                <span className="font-medium">{currencySymbol}{getCurrentListTotal().toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600">Selected items:</span>
-                <span className="font-medium text-blue-600">+{currencySymbol}{getFillItemsTotal().toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm font-semibold border-t border-gray-200 pt-1 mt-1">
-                <span>New total:</span>
-                <span className={cn(
-                  (getCurrentListTotal() + getFillItemsTotal()) > fillTargetAmount ? "text-red-600" : "text-green-600"
-                )}>
-                  {currencySymbol}{(getCurrentListTotal() + getFillItemsTotal()).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>Gap to target:</span>
-                <span>{currencySymbol}{Math.max(0, fillTargetAmount - getCurrentListTotal() - getFillItemsTotal()).toFixed(2)}</span>
+          {/* Summary */}
+          <div className="bg-gray-50 p-3 border-b border-gray-200">
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-gray-600">Current list total:</span>
+              <span className="font-medium">{currencySymbol}{getCurrentListTotal().toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-gray-600">Selected items:</span>
+              <span className="font-medium text-blue-600">+{currencySymbol}{getFillItemsTotal().toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm font-semibold border-t border-gray-200 pt-1 mt-1">
+              <span>New total:</span>
+              <span className={cn(
+                (getCurrentListTotal() + getFillItemsTotal()) > fillTargetAmount ? "text-red-600" : "text-green-600"
+              )}>
+                {currencySymbol}{(getCurrentListTotal() + getFillItemsTotal()).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>Gap to target:</span>
+              <span>{currencySymbol}{Math.max(0, fillTargetAmount - getCurrentListTotal() - getFillItemsTotal()).toFixed(2)}</span>
+            </div>
+          </div>
+
+          {/* Suggested Items */}
+          {getSuggestedFillItems().length > 0 && (
+            <div className="p-3 border-b border-gray-100">
+              <p className="text-xs font-medium text-gray-500 mb-2">Commonly purchased items to fill gap:</p>
+              <div className="flex flex-wrap gap-1">
+                {getSuggestedFillItems().map((item) => {
+                  const originalIndex = fillSelectedItems.findIndex(i => i.name === item.name);
+                  return (
+                    <button
+                      key={item.name}
+                      onClick={() => handleFillItemToggle(originalIndex)}
+                      className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full hover:bg-blue-100 transition-colors flex items-center gap-1"
+                    >
+                      <span>{item.name}</span>
+                      <span className="text-blue-500">({currencySymbol}{item.price.toFixed(2)})</span>
+                      {item.frequency && item.frequency > 1 && (
+                        <span className="bg-blue-200 text-blue-800 px-1 rounded text-[10px]">×{item.frequency}</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
+          )}
 
-            {/* Suggested Items */}
-            {getSuggestedFillItems().length > 0 && (
-              <div className="mb-2">
-                <p className="text-xs font-medium text-gray-500 mb-1">Suggested to fill gap:</p>
-                <div className="flex flex-wrap gap-1">
-                  {getSuggestedFillItems().map((item, index) => {
-                    const originalIndex = fillSelectedItems.findIndex(i => i.name === item.name);
+          {/* Available Items List */}
+          <div ref={fillItemsListRef} className="flex-1 overflow-y-auto p-3">
+            <p className="text-xs font-medium text-gray-500 mb-2">All items (sorted by price):</p>
+            {fillSelectedItems.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p className="text-sm">No items in your history yet.</p>
+                <p className="text-xs mt-1">Add items to your shopping lists to build your history.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(() => {
+                  // Reset refs array
+                  fillItemRefs.current = [];
+                  const targetIndex = getScrollTargetIndex();
+                  let cumulativeTotal = 0;
+                  
+                  return fillSelectedItems.map((item, index) => {
+                    if (!item.selected) {
+                      cumulativeTotal += item.price;
+                    }
+                    const isTargetItem = index === targetIndex;
+                    
                     return (
-                      <button
+                      <div
                         key={item.name}
-                        onClick={() => handleFillItemToggle(originalIndex)}
-                        className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full hover:bg-blue-100 transition-colors"
+                        ref={(el) => { fillItemRefs.current[index] = el; }}
+                        className={cn(
+                          "flex items-center gap-2 p-2 rounded-lg border transition-colors",
+                          item.selected ? "bg-blue-50 border-blue-300" : 
+                          isTargetItem ? "bg-yellow-50 border-yellow-300 ring-2 ring-yellow-200" : 
+                          "bg-white border-gray-200"
+                        )}
                       >
-                        {item.name} ({currencySymbol}{item.price.toFixed(2)})
-                      </button>
+                        <input
+                          type="checkbox"
+                          checked={item.selected}
+                          onChange={() => handleFillItemToggle(index)}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <span>{currencySymbol}{item.price.toFixed(2)} each</span>
+                            {item.frequency && item.frequency > 1 && (
+                              <span className="bg-gray-100 px-1 rounded">bought {item.frequency}×</span>
+                            )}
+                          </div>
+                        </div>
+                        {item.selected && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleFillItemQuantityChange(index, item.quantity - 1)}
+                              className="w-6 h-6 p-0 rounded-full"
+                              disabled={item.quantity <= 1}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleFillItemQuantityChange(index, item.quantity + 1)}
+                              className="w-6 h-6 p-0 rounded-full"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
+                        <span className="text-sm font-medium text-gray-700 w-16 text-right">
+                          {currencySymbol}{(item.price * item.quantity).toFixed(2)}
+                        </span>
+                      </div>
                     );
-                  })}
-                </div>
+                  });
+                })()}
               </div>
             )}
+          </div>
 
-            {/* Available Items List */}
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <p className="text-xs font-medium text-gray-500 mb-2">Select items from your history:</p>
-              {fillSelectedItems.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <p className="text-sm">No items in your history yet.</p>
-                  <p className="text-xs mt-1">Add items to your shopping lists to build your history.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {fillSelectedItems.map((item, index) => (
-                    <div
-                      key={item.name}
-                      className={cn(
-                        "flex items-center gap-2 p-2 rounded-lg border transition-colors",
-                        item.selected ? "bg-blue-50 border-blue-300" : "bg-white border-gray-200"
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={item.selected}
-                        onChange={() => handleFillItemToggle(index)}
-                        className="w-4 h-4 text-blue-600 rounded"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                        <p className="text-xs text-gray-500">{currencySymbol}{item.price.toFixed(2)} each</p>
-                      </div>
-                      {item.selected && (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleFillItemQuantityChange(index, item.quantity - 1)}
-                            className="w-6 h-6 p-0 rounded-full"
-                            disabled={item.quantity <= 1}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleFillItemQuantityChange(index, item.quantity + 1)}
-                            className="w-6 h-6 p-0 rounded-full"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      )}
-                      <span className="text-sm font-medium text-gray-700 w-16 text-right">
-                        {currencySymbol}{(item.price * item.quantity).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 pt-3 mt-3 border-t border-gray-200">
-              <Button
-                variant="outline"
-                onClick={() => setShowFillItemsPanel(false)}
-                className="flex-1 py-3 text-base"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAddFillItems}
-                disabled={fillSelectedItems.filter(i => i.selected).length === 0}
-                className="flex-1 bg-blue-600 text-white hover:bg-blue-700 py-3 text-base font-medium disabled:opacity-50"
-              >
-                Add {fillSelectedItems.filter(i => i.selected).length} Item{fillSelectedItems.filter(i => i.selected).length !== 1 ? 's' : ''}
-              </Button>
-            </div>
+          {/* Action Buttons */}
+          <div className="flex gap-3 p-4 border-t border-gray-200 bg-white">
+            <Button
+              variant="outline"
+              onClick={() => setShowFillItemsPanel(false)}
+              className="flex-1 py-3 text-base"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddFillItems}
+              disabled={fillSelectedItems.filter(i => i.selected).length === 0}
+              className="flex-1 bg-blue-600 text-white hover:bg-blue-700 py-3 text-base font-medium disabled:opacity-50"
+            >
+              Add {fillSelectedItems.filter(i => i.selected).length} Item{fillSelectedItems.filter(i => i.selected).length !== 1 ? 's' : ''}
+            </Button>
           </div>
         </div>
       )}
