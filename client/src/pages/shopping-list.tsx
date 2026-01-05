@@ -77,7 +77,6 @@ export default function ShoppingListPage() {
   const [fillTargetAmount, setFillTargetAmount] = useState<number>(50);
   const [fillSelectedItems, setFillSelectedItems] = useState<{ name: string; price: number; quantity: number; selected: boolean; frequency?: number }[]>([]);
   const fillItemsListRef = useRef<HTMLDivElement>(null);
-  const fillItemRefs = useRef<(HTMLDivElement | null)[]>([]);
   
   // For manually added items, we won't fetch images from the web
   // Only items captured via camera will have product images
@@ -467,22 +466,19 @@ export default function ShoppingListPage() {
     if (showFillItemsPanel && fillSelectedItems.length > 0 && fillTargetAmount > 0) {
       // Use longer delay for Safari compatibility
       setTimeout(() => {
-        const targetIndex = getScrollTargetIndex();
-        if (targetIndex >= 0 && targetIndex < fillItemRefs.current.length) {
-          const targetRef = fillItemRefs.current[targetIndex];
-          const container = fillItemsListRef.current;
-          if (targetRef && container) {
-            // Calculate scroll position manually for Safari compatibility
-            const containerRect = container.getBoundingClientRect();
-            const targetRect = targetRef.getBoundingClientRect();
-            const scrollTop = container.scrollTop + (targetRect.top - containerRect.top) - (containerRect.height / 2) + (targetRect.height / 2);
-            container.scrollTo({
-              top: Math.max(0, scrollTop),
-              behavior: 'smooth'
-            });
-          }
+        const container = fillItemsListRef.current;
+        const targetElement = container?.querySelector('[data-scroll-target="true"]') as HTMLElement;
+        if (targetElement && container) {
+          // Calculate scroll position manually for Safari compatibility
+          const containerRect = container.getBoundingClientRect();
+          const targetRect = targetElement.getBoundingClientRect();
+          const scrollTop = container.scrollTop + (targetRect.top - containerRect.top) - (containerRect.height / 2) + (targetRect.height / 2);
+          container.scrollTo({
+            top: Math.max(0, scrollTop),
+            behavior: 'smooth'
+          });
         }
-      }, 350);
+      }, 400);
     }
   }, [showFillItemsPanel, fillSelectedItems.length, fillTargetAmount]);
 
@@ -1771,8 +1767,6 @@ export default function ShoppingListPage() {
             ) : (
               <div className="space-y-2">
                 {(() => {
-                  // Reset refs array
-                  fillItemRefs.current = [];
                   const targetIndex = getScrollTargetIndex();
                   const gap = fillTargetAmount - getCurrentListTotal() - getFillItemsTotal();
                   
@@ -1783,7 +1777,7 @@ export default function ShoppingListPage() {
                     return (
                       <div
                         key={item.name}
-                        ref={(el) => { fillItemRefs.current[index] = el; }}
+                        data-scroll-target={isTargetItem ? "true" : undefined}
                         className={cn(
                           "flex items-center gap-2 p-2 rounded-lg border transition-colors",
                           item.selected ? "bg-blue-50 border-blue-300" : 
