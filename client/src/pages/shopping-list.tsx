@@ -472,25 +472,22 @@ export default function ShoppingListPage() {
     return suggestions.slice(0, 6); // Return up to 6 suggestions
   };
 
-  // Get the scroll target index - the item where cumulative total exceeds the gap
+  // Get the scroll target index - the first item whose price >= the gap
   const getScrollTargetIndex = () => {
     const currentTotal = getCurrentListTotal();
     const selectedTotal = getFillItemsTotal();
     const gap = fillTargetAmount - currentTotal - selectedTotal;
     
-    if (gap <= 0) return 0;
+    if (gap <= 0) return -1;
     
-    // Items are sorted by price ascending
-    let cumulative = 0;
+    // Items are sorted by price ascending, find first item with price >= gap
     for (let i = 0; i < fillSelectedItems.length; i++) {
-      if (!fillSelectedItems[i].selected) {
-        cumulative += fillSelectedItems[i].price;
-        if (cumulative >= gap) {
-          return i;
-        }
+      if (!fillSelectedItems[i].selected && fillSelectedItems[i].price >= gap) {
+        return i;
       }
     }
-    return 0;
+    // If no single item can fill the gap, return the last (most expensive) item
+    return fillSelectedItems.length - 1;
   };
 
   // Auto-scroll to target item when Fill Items panel opens
@@ -1816,13 +1813,11 @@ export default function ShoppingListPage() {
                   // Reset refs array
                   fillItemRefs.current = [];
                   const targetIndex = getScrollTargetIndex();
-                  let cumulativeTotal = 0;
+                  const gap = fillTargetAmount - getCurrentListTotal() - getFillItemsTotal();
                   
                   return fillSelectedItems.map((item, index) => {
-                    if (!item.selected) {
-                      cumulativeTotal += item.price;
-                    }
-                    const isTargetItem = index === targetIndex;
+                    // Only highlight if there's a gap and this is the target item
+                    const isTargetItem = gap > 0 && index === targetIndex && !item.selected;
                     
                     return (
                       <div
