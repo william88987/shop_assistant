@@ -462,10 +462,11 @@ export default function ShoppingListPage() {
     return fillSelectedItems.length - 1;
   };
 
-  // Auto-scroll to target item when Fill Items panel opens
+  // Auto-scroll to target item when Fill Items panel opens or target changes
   useEffect(() => {
-    if (showFillItemsPanel && fillSelectedItems.length > 0) {
-      // Longer delay to ensure DOM is fully rendered and refs are populated
+    if (showFillItemsPanel && fillSelectedItems.length > 0 && fillTargetAmount > 0) {
+      // Use shorter delay when target changes, longer when panel first opens
+      const delay = 150;
       setTimeout(() => {
         const targetIndex = getScrollTargetIndex();
         if (targetIndex >= 0 && targetIndex < fillItemRefs.current.length) {
@@ -474,7 +475,7 @@ export default function ShoppingListPage() {
             targetRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
         }
-      }, 300);
+      }, delay);
     }
   }, [showFillItemsPanel, fillSelectedItems.length, fillTargetAmount]);
 
