@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, X, Camera, Tag, Package, PauseCircle, Type, Settings, Palette, Scale, Sparkles } from "lucide-react";
+import { ArrowRight, X, Camera, Tag, Package, PauseCircle, Type, Settings, Palette, Scale, Sparkles, ShoppingCart } from "lucide-react";
 
 interface SplashScreenProps {
   onClose: () => void;
@@ -15,6 +15,13 @@ interface Feature {
 }
 
 const features: Feature[] = [
+  {
+    title: "Fill Items",
+    description: "Reach your target spending amount by selecting items from your shopping history. Auto-scrolls to the item that fills the gap!",
+    icon: "🛒",
+    iconComponent: <ShoppingCart className="w-12 h-12" />,
+    gradient: "from-green-400 to-emerald-600"
+  },
   {
     title: "Ask AI Assistant",
     description: "Get personalized recipe suggestions, meal planning, nutritional info, and budget analysis based on your shopping items",
@@ -44,8 +51,8 @@ const features: Feature[] = [
     gradient: "from-blue-400 to-blue-600"
   },
   {
-    title: "Auto Complete Input",
-    description: "Smart suggestions based on your shopping history for faster item entry",
+    title: "Auto Complete with Prices",
+    description: "Smart suggestions with last known prices - auto-fills both name and price when selected",
     icon: "⌨️",
     iconComponent: <Type className="w-12 h-12" />,
     gradient: "from-indigo-400 to-indigo-600"
@@ -148,7 +155,7 @@ export function SplashScreen({ onClose }: SplashScreenProps) {
   };
 
   const handleClose = () => {
-    const SPLASH_VERSION = 'v2.4'; // Keep in sync with App.tsx
+    const SPLASH_VERSION = 'v2.5'; // Keep in sync with App.tsx
     localStorage.setItem(`splashScreenShown_${SPLASH_VERSION}`, 'true');
     setFadeOut(true);
     setTimeout(() => {
