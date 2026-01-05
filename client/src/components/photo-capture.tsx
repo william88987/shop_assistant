@@ -147,13 +147,13 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
 
           setLoadingText('Processing image');
           let dotCount = 0;
-          let loadingPhase = 0; // 0: Processing, 1: Analyzing, 2: Creating thumbnail
+          let loadingPhase = 0; // 0: Processing, 1: Analyzing, 2: Waiting for response
+          const phases = ['Processing image', 'Analyzing with AI', 'Waiting for response'];
           loadingInterval.current = setInterval(() => {
             dotCount = (dotCount + 1) % 4;
-            if (dotCount === 0) {
-              loadingPhase = (loadingPhase + 1) % 3;
+            if (dotCount === 0 && loadingPhase < phases.length - 1) {
+              loadingPhase++;
             }
-            const phases = ['Processing', 'Analyzing', 'Creating thumbnail'];
             setLoadingText(phases[loadingPhase] + '.'.repeat(dotCount + 1));
           }, 500);
 

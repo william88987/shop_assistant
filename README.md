@@ -1,11 +1,14 @@
-# Shop Assistant v2.4 🛒
+# Shop Assistant v2.5 🛒
 
 A modern shopping assistant application with Camera and AI-powered price tag detection using Google Gemini.
 
-**Latest Update**: Added AI Assistant feature with personalized recipe suggestions, meal planning, nutritional analysis, and budget insights based on your shopping items.
+**Latest Update**: Added "Fill Items" feature to help reach target spending amounts by suggesting items from your shopping history, plus improved autocomplete with price memory.
 
 ## ✨ Features
 
+- **🛒 Fill Items** - Reach your target spending amount by selecting items from your shopping history with smart suggestions to minimize the gap
+- **💰 Autocomplete with Prices** - Item suggestions now include last known prices, auto-filling both name and price when selected
+- **📷 Discard Item Alert** - When scanning a new item while one is already entered, get prompted to discard or cancel
 - **✨ AI Assistant** - Personalized recipe suggestions, meal planning, nutritional analysis, and budget insights based on your shopping items with intelligent follow-up conversations
 - **🖼️ Product Photo Thumbnails** - AI-powered product image extraction from captured photos using Gemini vision, with 50x50px thumbnails displayed in lists
 - **⚙️ Configurable Photo Settings** - Enable/disable product photo extraction for faster processing, with option to clear all stored thumbnails
@@ -13,11 +16,11 @@ A modern shopping assistant application with Camera and AI-powered price tag det
 - **📷 AI Price Tag Scanning with Multi-Purchase Discounts** - Take photos of price tags and automatically extract product information using Gemini AI, including volume discounts (3 for €10, 3 for 2, etc.)
 - **🎨 Updated Interface** - Fresh new design with consistent blue theme, improved layouts, and enhanced user experience
 - **⌨️ Auto Complete Input** - Smart suggestions based on your shopping history for faster item entry
-- **� MCurrency Configuration** - Customize your currency symbol - supports €, $, £, ¥ and custom symbols
+- **💱 Currency Configuration** - Customize your currency symbol - supports €, $, £, ¥ and custom symbols
 - **📝 Shopping List Management** - Create and manage multiple shopping lists
 - **⏸️ Hold Item Feature** - Temporarily put items on hold to exclude them from totals and list splitting
-- **� Intetlligent Grouping** - Smart bin-packing algorithm optimally splits lists by target amounts
-- **� DMobile-First Design** - Optimized for mobile devices with touch-friendly interface
+- **📊 Intelligent Grouping** - Smart bin-packing algorithm optimally splits lists by target amounts
+- **📱 Mobile-First Design** - Optimized for mobile devices with touch-friendly interface
 - **⚡ Fast & Lightweight** - Clean, optimized codebase with minimal dependencies
 - **🖼️ Image Processing** - Automatic image resizing for optimal AI performance
 - **🔄 Smart Deployment** - Universal deployment script with intelligent cleanup
@@ -188,8 +191,17 @@ client/src/
    - **Visual Indicators**: Held items show with gray background and "(on hold)" label
    - **Easy Toggle**: Click the play button to resume held items
 
+### Fill Items
+9. **Reach Target Amount**: Use the "Fill Items" button to add items to reach a spending target
+   - **Set Target**: Enter your desired total spending amount
+   - **Browse History**: See all items from your previous shopping lists
+   - **Smart Suggestions**: Get recommendations for items that best fill the gap to your target
+   - **Select & Adjust**: Check items to add and adjust quantities as needed
+   - **Live Totals**: See current total, selected items total, and gap to target in real-time
+   - **Bulk Add**: Add all selected items to your list with one click
+
 ### Smart Grouping
-9. **Enable Split Mode**: Automatically group items by target spending amounts
+10. **Enable Split Mode**: Automatically group items by target spending amounts
    - **Whole Unit Grouping**: Multi-purchase discount and Per-KG items are included as whole units in groups (not split)
 10. **Track Totals**: Monitor your spending with real-time calculations including discount savings
 

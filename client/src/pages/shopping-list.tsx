@@ -12,6 +12,16 @@ import { QuantityInput } from "@/components/quantity-input";
 import { PhotoCapture } from "@/components/photo-capture";
 import { WeightEditDialog } from "@/components/weight-edit-dialog";
 import { ManualPerKgDialog } from "@/components/manual-perkg-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { ArrowLeft, Plus, Edit2, Check, X, Camera, Tag, Pause, Play, Trash2, Minus, AtSign, Calculator, Percent, Scale, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -56,9 +66,16 @@ export default function ShoppingListPage() {
   const [editingPerKgItem, setEditingPerKgItem] = useState<ShoppingItem | null>(null);
   // Add state for manual per-KG dialog
   const [showManualPerKgDialog, setShowManualPerKgDialog] = useState<boolean>(false);
-  // Add state for autocomplete suggestions
+  // Add state for autocomplete suggestions with prices
   const [itemNameSuggestions, setItemNameSuggestions] = useState<string[]>([]);
+  const [itemsWithPrices, setItemsWithPrices] = useState<{ name: string; price: number }[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
+  // Add state for discard item confirmation dialog
+  const [showDiscardItemDialog, setShowDiscardItemDialog] = useState<boolean>(false);
+  // Add state for Fill Items feature
+  const [showFillItemsPanel, setShowFillItemsPanel] = useState<boolean>(false);
+  const [fillTargetAmount, setFillTargetAmount] = useState<number>(50);
+  const [fillSelectedItems, setFillSelectedItems] = useState<{ name: string; price: number; quantity: number; selected: boolean }[]>([]);
   
   // For manually added items, we won't fetch images from the web
   // Only items captured via camera will have product images
@@ -80,8 +97,9 @@ export default function ShoppingListPage() {
       }
     }
 
-    // Load item name suggestions
+    // Load item name suggestions with prices
     setItemNameSuggestions(storageService.getItemNames());
+    setItemsWithPrices(storageService.getItemsWithPrices());
     
     // Load currency symbol
     const savedCurrency = localStorage.getItem('currencySymbol') || '€';
@@ -113,19 +131,8 @@ export default function ShoppingListPage() {
       .trim();
   };
 
-  // Function to save all item names from current list
-  const saveItemNamesFromList = () => {
-    if (currentList && currentList.items.length > 0) {
-      const itemNames = currentList.items
-        .map(item => cleanItemName(item.name.trim()))
-        .filter(name => name.length > 0);
-      storageService.saveItemNames(itemNames);
-    }
-  };
-
   // Function to handle navigation back
   const handleBackNavigation = () => {
-    saveItemNamesFromList();
     setLocation("/");
   };
 
@@ -178,12 +185,19 @@ export default function ShoppingListPage() {
 
     updateList(updatedList);
 
-    // Save the new item name for autocomplete (cleaned)
+    // Save the new item name and price for autocomplete (cleaned)
+    // First try the cleaned name, but also save original if cleaning removes too much
     const cleanedName = cleanItemName(itemData.name.trim());
-    if (cleanedName) {
-      storageService.addItemName(cleanedName);
-      setItemNameSuggestions(storageService.getItemNames());
+    const originalName = itemData.name.trim()
+      .replace(/\s*\([0-9.]+kg\)/gi, '') // Only remove weight patterns for original
+      .trim();
+    
+    const nameToSave = (cleanedName && cleanedName.length > 0) ? cleanedName : originalName;
+    if (nameToSave && nameToSave.length > 0) {
+      storageService.addItemWithPrice(nameToSave, Number(itemData.price));
     }
+    setItemNameSuggestions(storageService.getItemNames());
+    setItemsWithPrices(storageService.getItemsWithPrices());
 
     setNewItem({ name: "", price: 0, quantity: 1, discountApplied: false, onHold: false, isPerKg: false, isSplittable: true, photo: undefined });
     setOcrIsProcessing(false);
@@ -299,6 +313,132 @@ export default function ShoppingListPage() {
     };
 
     updateList(updatedList);
+  };
+
+  // Fill Items feature - suggest items to reach target amount
+  const handleOpenFillItems = () => {
+    if (!currentList) return;
+    
+    // Calculate current total
+    const currentTotal = currentList.items
+      .filter(item => !item.onHold)
+      .reduce((sum, item) => sum + item.total, 0);
+    
+    // Set default target to current total + 10 (rounded up to nearest 5)
+    const suggestedTarget = Math.ceil((currentTotal + 10) / 5) * 5;
+    setFillTargetAmount(suggestedTarget);
+    
+    // Get items from all shopping lists (more reliable than autocomplete)
+    const allLists = storageService.getAllLists();
+    const itemsMap = new Map<string, { name: string; price: number }>();
+    
+    // Collect unique items from all lists, keeping the latest price
+    allLists.forEach(list => {
+      list.items.forEach(item => {
+        // Clean the item name (remove weight, discount info)
+        const cleanName = item.name
+          .replace(/\s*\([^)]*\)/g, '') // Remove parenthetical info
+          .trim();
+        
+        if (cleanName && item.price > 0) {
+          // Use lowercase key for deduplication, but keep original casing
+          const key = cleanName.toLowerCase();
+          // Always update to get the latest price
+          itemsMap.set(key, { name: cleanName, price: item.price });
+        }
+      });
+    });
+    
+    // Filter out items already in current list
+    const existingItemNames = new Set(currentList.items.map(item => 
+      item.name.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim()
+    ));
+    
+    const availableItems = Array.from(itemsMap.values())
+      .filter(item => !existingItemNames.has(item.name.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(item => ({
+        name: item.name,
+        price: item.price,
+        quantity: 1,
+        selected: false
+      }));
+    
+    setFillSelectedItems(availableItems);
+    setShowFillItemsPanel(true);
+  };
+
+  const handleFillItemToggle = (index: number) => {
+    setFillSelectedItems(prev => prev.map((item, i) => 
+      i === index ? { ...item, selected: !item.selected } : item
+    ));
+  };
+
+  const handleFillItemQuantityChange = (index: number, quantity: number) => {
+    if (quantity < 1) return;
+    setFillSelectedItems(prev => prev.map((item, i) => 
+      i === index ? { ...item, quantity } : item
+    ));
+  };
+
+  const getFillItemsTotal = () => {
+    return fillSelectedItems
+      .filter(item => item.selected)
+      .reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  };
+
+  const getCurrentListTotal = () => {
+    if (!currentList) return 0;
+    return currentList.items
+      .filter(item => !item.onHold)
+      .reduce((sum, item) => sum + item.total, 0);
+  };
+
+  const handleAddFillItems = async () => {
+    const selectedItems = fillSelectedItems.filter(item => item.selected);
+    if (selectedItems.length === 0) {
+      toast({
+        title: "No items selected",
+        description: "Please select at least one item to add.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Add each selected item to the list
+    for (const item of selectedItems) {
+      const itemData: InsertShoppingItem = {
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        discountApplied: false,
+        onHold: false,
+        isPerKg: false,
+        isSplittable: true
+      };
+      await addItemToList(itemData);
+    }
+
+    setShowFillItemsPanel(false);
+    toast({
+      title: "Items added",
+      description: `Added ${selectedItems.length} item${selectedItems.length > 1 ? 's' : ''} to your list.`
+    });
+  };
+
+  // Auto-suggest items to fill the gap
+  const getSuggestedFillItems = () => {
+    const currentTotal = getCurrentListTotal();
+    const gap = fillTargetAmount - currentTotal;
+    
+    if (gap <= 0) return [];
+    
+    // Find items that could help fill the gap (sorted by how close they are to filling it)
+    const availableItems = fillSelectedItems
+      .filter(item => !item.selected && item.price <= gap)
+      .sort((a, b) => b.price - a.price); // Prefer higher-priced items to minimize count
+    
+    return availableItems.slice(0, 5); // Return top 5 suggestions
   };
 
   // Update handleRunBinPacking to use groupSpecs and call the new bin-packing logic
@@ -516,12 +656,18 @@ export default function ShoppingListPage() {
 
     updateList(updatedList);
 
-    // Save the edited item name for autocomplete (cleaned)
+    // Save the edited item name and price for autocomplete (cleaned)
     const cleanedName = cleanItemName(editForm.name.trim());
-    if (cleanedName) {
-      storageService.addItemName(cleanedName);
-      setItemNameSuggestions(storageService.getItemNames());
+    const originalName = editForm.name.trim()
+      .replace(/\s*\([0-9.]+kg\)/gi, '') // Only remove weight patterns for original
+      .trim();
+    
+    const nameToSave = (cleanedName && cleanedName.length > 0) ? cleanedName : originalName;
+    if (nameToSave && nameToSave.length > 0) {
+      storageService.addItemWithPrice(nameToSave, Number(editForm.price));
     }
+    setItemNameSuggestions(storageService.getItemNames());
+    setItemsWithPrices(storageService.getItemsWithPrices());
 
     setEditingItem(null);
   };
@@ -582,12 +728,16 @@ export default function ShoppingListPage() {
 
     updateList(updatedList);
     
-    // Save the cleaned product name (without weight) for autocomplete
+    // Save the cleaned product name and price (without weight) for autocomplete
     const cleanedName = cleanItemName(productName.trim());
-    if (cleanedName) {
-      storageService.addItemName(cleanedName);
-      setItemNameSuggestions(storageService.getItemNames());
+    const originalName = productName.trim();
+    
+    const nameToSave = (cleanedName && cleanedName.length > 0) ? cleanedName : originalName;
+    if (nameToSave && nameToSave.length > 0) {
+      storageService.addItemWithPrice(nameToSave, pricePerKg);
     }
+    setItemNameSuggestions(storageService.getItemNames());
+    setItemsWithPrices(storageService.getItemsWithPrices());
     
     setShowWeightEditDialog(false);
     setEditingPerKgItem(null);
@@ -615,12 +765,16 @@ export default function ShoppingListPage() {
 
     await addItemToList(itemData);
     
-    // Save the cleaned product name (without weight) for autocomplete
+    // Save the cleaned product name and price (without weight) for autocomplete
     const cleanedName = cleanItemName(productName.trim());
-    if (cleanedName) {
-      storageService.addItemName(cleanedName);
-      setItemNameSuggestions(storageService.getItemNames());
+    const originalName = productName.trim();
+    
+    const nameToSave = (cleanedName && cleanedName.length > 0) ? cleanedName : originalName;
+    if (nameToSave && nameToSave.length > 0) {
+      storageService.addItemWithPrice(nameToSave, pricePerKg);
     }
+    setItemNameSuggestions(storageService.getItemNames());
+    setItemsWithPrices(storageService.getItemsWithPrices());
     
     // Clear the main form since we used its values for the per-KG item
     setNewItem({ name: "", price: 0, quantity: 1, discountApplied: false, onHold: false, isPerKg: false, isSplittable: true, photo: undefined });
@@ -902,13 +1056,6 @@ export default function ShoppingListPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Save item names when component unmounts
-  useEffect(() => {
-    return () => {
-      saveItemNamesFromList();
-    };
-  }, [currentList]);
-
   if (!currentList) {
     return (
       <div className="max-w-md mx-auto bg-white min-h-screen flex items-center justify-center">
@@ -990,10 +1137,13 @@ export default function ShoppingListPage() {
               <AutocompleteInput
                 value={newItem.name}
                 onChange={(value) => setNewItem(prev => ({ ...prev, name: value }))}
+                onSelectItem={(item) => setNewItem(prev => ({ ...prev, name: item.name, price: item.price }))}
                 suggestions={itemNameSuggestions}
+                itemsWithPrices={itemsWithPrices}
                 placeholder={ocrIsProcessing ? (ocrLoadingText || "Loading...") : "Item name"}
                 className="w-full px-4 py-3 text-base"
                 disabled={ocrIsProcessing}
+                currencySymbol={currencySymbol}
               />
             </div>
             <Button
@@ -1006,9 +1156,14 @@ export default function ShoppingListPage() {
             </Button>
             <Button
               onClick={() => {
-                setPhotoCaptureKey(prev => prev + 1);
-                setShowPhotoCapture(true);
-                setNewItem({ name: "", price: 0, quantity: 1, discountApplied: false, onHold: false, isPerKg: false, isSplittable: true, photo: undefined });
+                // Check if there's existing item data that would be discarded
+                if (newItem.name.trim()) {
+                  setShowDiscardItemDialog(true);
+                } else {
+                  setPhotoCaptureKey(prev => prev + 1);
+                  setShowPhotoCapture(true);
+                  setNewItem({ name: "", price: 0, quantity: 1, discountApplied: false, onHold: false, isPerKg: false, isSplittable: true, photo: undefined });
+                }
               }}
               variant="outline"
               className="px-3 py-3 flex items-center justify-center w-12 shrink-0 hover:bg-blue-50 hover:border-blue-300 text-gray-600 hover:text-blue-600"
@@ -1170,9 +1325,12 @@ export default function ShoppingListPage() {
                         <AutocompleteInput
                           value={editForm.name || ""}
                           onChange={(value) => setEditForm(prev => ({ ...prev, name: value }))}
+                          onSelectItem={(item) => setEditForm(prev => ({ ...prev, name: item.name, price: item.price }))}
                           suggestions={itemNameSuggestions}
+                          itemsWithPrices={itemsWithPrices}
                           placeholder="Item name"
                           className="w-full px-4 py-3 text-base"
+                          currencySymbol={currencySymbol}
                         />
                       </div>
                       <div className="flex items-center gap-2">
@@ -1362,15 +1520,24 @@ export default function ShoppingListPage() {
         )}
       </div>
 
-      {/* Bottom Split Panel */}
+      {/* Bottom Panel */}
       <div className="fixed bottom-0 left-0 right-0 bg-white p-4 max-w-md mx-auto">
         {!currentList.isSplitMode ? (
-          <Button
-            onClick={() => setShowSplitPanel(true)}
-            className="w-full bg-blue-600 text-white hover:bg-blue-700 py-3 text-base font-medium"
-          >
-            Split List
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleOpenFillItems}
+              variant="outline"
+              className="flex-1 border-blue-300 text-blue-600 hover:bg-blue-50 py-3 text-base font-medium"
+            >
+              Fill Items
+            </Button>
+            <Button
+              onClick={() => setShowSplitPanel(true)}
+              className="flex-1 bg-blue-600 text-white hover:bg-blue-700 py-3 text-base font-medium"
+            >
+              Split List
+            </Button>
+          </div>
         ) : (
           <Button
             onClick={handleToggleSplitMode}
@@ -1491,6 +1658,160 @@ export default function ShoppingListPage() {
         </div>
       )}
 
+      {/* Fill Items Panel */}
+      {showFillItemsPanel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50 max-w-md mx-auto">
+          <div className="bg-white w-full max-w-md rounded-t-lg p-4 max-h-[80vh] overflow-hidden border-t-2 border-l-2 border-r-2 border-gray-200 shadow-xl flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-gray-900">Fill Items</h3>
+              <Button
+                variant="ghost"
+                onClick={() => setShowFillItemsPanel(false)}
+                className="p-2 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Target Amount Input */}
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Target Total ({currencySymbol})</label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={fillTargetAmount}
+                onChange={(e) => setFillTargetAmount(Number(e.target.value))}
+                placeholder="50.00"
+                step="0.01"
+                className="w-full px-4 py-2 text-base"
+              />
+            </div>
+
+            {/* Summary */}
+            <div className="bg-gray-50 rounded-lg p-3 mb-3">
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-gray-600">Current list total:</span>
+                <span className="font-medium">{currencySymbol}{getCurrentListTotal().toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-gray-600">Selected items:</span>
+                <span className="font-medium text-blue-600">+{currencySymbol}{getFillItemsTotal().toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-semibold border-t border-gray-200 pt-1 mt-1">
+                <span>New total:</span>
+                <span className={cn(
+                  (getCurrentListTotal() + getFillItemsTotal()) > fillTargetAmount ? "text-red-600" : "text-green-600"
+                )}>
+                  {currencySymbol}{(getCurrentListTotal() + getFillItemsTotal()).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>Gap to target:</span>
+                <span>{currencySymbol}{Math.max(0, fillTargetAmount - getCurrentListTotal() - getFillItemsTotal()).toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Suggested Items */}
+            {getSuggestedFillItems().length > 0 && (
+              <div className="mb-2">
+                <p className="text-xs font-medium text-gray-500 mb-1">Suggested to fill gap:</p>
+                <div className="flex flex-wrap gap-1">
+                  {getSuggestedFillItems().map((item, index) => {
+                    const originalIndex = fillSelectedItems.findIndex(i => i.name === item.name);
+                    return (
+                      <button
+                        key={item.name}
+                        onClick={() => handleFillItemToggle(originalIndex)}
+                        className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full hover:bg-blue-100 transition-colors"
+                      >
+                        {item.name} ({currencySymbol}{item.price.toFixed(2)})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Available Items List */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <p className="text-xs font-medium text-gray-500 mb-2">Select items from your history:</p>
+              {fillSelectedItems.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p className="text-sm">No items in your history yet.</p>
+                  <p className="text-xs mt-1">Add items to your shopping lists to build your history.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {fillSelectedItems.map((item, index) => (
+                    <div
+                      key={item.name}
+                      className={cn(
+                        "flex items-center gap-2 p-2 rounded-lg border transition-colors",
+                        item.selected ? "bg-blue-50 border-blue-300" : "bg-white border-gray-200"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={item.selected}
+                        onChange={() => handleFillItemToggle(index)}
+                        className="w-4 h-4 text-blue-600 rounded"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                        <p className="text-xs text-gray-500">{currencySymbol}{item.price.toFixed(2)} each</p>
+                      </div>
+                      {item.selected && (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleFillItemQuantityChange(index, item.quantity - 1)}
+                            className="w-6 h-6 p-0 rounded-full"
+                            disabled={item.quantity <= 1}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleFillItemQuantityChange(index, item.quantity + 1)}
+                            className="w-6 h-6 p-0 rounded-full"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+                      <span className="text-sm font-medium text-gray-700 w-16 text-right">
+                        {currencySymbol}{(item.price * item.quantity).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-3 mt-3 border-t border-gray-200">
+              <Button
+                variant="outline"
+                onClick={() => setShowFillItemsPanel(false)}
+                className="flex-1 py-3 text-base"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddFillItems}
+                disabled={fillSelectedItems.filter(i => i.selected).length === 0}
+                className="flex-1 bg-blue-600 text-white hover:bg-blue-700 py-3 text-base font-medium disabled:opacity-50"
+              >
+                Add {fillSelectedItems.filter(i => i.selected).length} Item{fillSelectedItems.filter(i => i.selected).length !== 1 ? 's' : ''}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
 
       {/* Photo Capture Modal */}
@@ -1524,6 +1845,33 @@ export default function ShoppingListPage() {
           initialPricePerKg={newItem.price}
         />
       )}
+
+      {/* Discard Item Confirmation Dialog */}
+      <AlertDialog open={showDiscardItemDialog} onOpenChange={setShowDiscardItemDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard current item?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have "{newItem.name}" in the input field. Taking a new photo will replace this item. Do you want to discard it and scan a new item?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowDiscardItemDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowDiscardItemDialog(false);
+                setPhotoCaptureKey(prev => prev + 1);
+                setShowPhotoCapture(true);
+                setNewItem({ name: "", price: 0, quantity: 1, discountApplied: false, onHold: false, isPerKg: false, isSplittable: true, photo: undefined });
+              }}
+            >
+              Discard & Scan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
