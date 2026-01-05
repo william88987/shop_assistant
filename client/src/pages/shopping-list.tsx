@@ -465,17 +465,24 @@ export default function ShoppingListPage() {
   // Auto-scroll to target item when Fill Items panel opens or target changes
   useEffect(() => {
     if (showFillItemsPanel && fillSelectedItems.length > 0 && fillTargetAmount > 0) {
-      // Use shorter delay when target changes, longer when panel first opens
-      const delay = 150;
+      // Use longer delay for Safari compatibility
       setTimeout(() => {
         const targetIndex = getScrollTargetIndex();
         if (targetIndex >= 0 && targetIndex < fillItemRefs.current.length) {
           const targetRef = fillItemRefs.current[targetIndex];
-          if (targetRef) {
-            targetRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const container = fillItemsListRef.current;
+          if (targetRef && container) {
+            // Calculate scroll position manually for Safari compatibility
+            const containerRect = container.getBoundingClientRect();
+            const targetRect = targetRef.getBoundingClientRect();
+            const scrollTop = container.scrollTop + (targetRect.top - containerRect.top) - (containerRect.height / 2) + (targetRect.height / 2);
+            container.scrollTo({
+              top: Math.max(0, scrollTop),
+              behavior: 'smooth'
+            });
           }
         }
-      }, delay);
+      }, 350);
     }
   }, [showFillItemsPanel, fillSelectedItems.length, fillTargetAmount]);
 
