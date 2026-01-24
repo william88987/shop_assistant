@@ -63,17 +63,17 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
             const cropSize = Math.round((cropArea.size / 100) * minDimension);
             const centerX = Math.round((cropArea.centerX / 100) * width);
             const centerY = Math.round((cropArea.centerY / 100) * height);
-            
+
             // Calculate top-left corner from center point
             sourceX = centerX - cropSize / 2;
             sourceY = centerY - cropSize / 2;
             sourceWidth = cropSize;
             sourceHeight = cropSize;
-            
+
             // Ensure crop doesn't exceed image bounds
             sourceX = Math.max(0, Math.min(sourceX, width - sourceWidth));
             sourceY = Math.max(0, Math.min(sourceY, height - sourceHeight));
-            
+
             console.log(`📐 Calculated crop: center(${centerX},${centerY}) → ${Math.round(sourceX)},${Math.round(sourceY)} ${Math.round(sourceWidth)}x${Math.round(sourceHeight)} (image: ${width}x${height})`);
           } else {
             // Fallback: Focus on upper-center area where products typically are
@@ -147,22 +147,39 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
 
           setLoadingText('Processing image');
           let dotCount = 0;
-          let loadingPhase = 0; // 0: Processing, 1: Analyzing, 2: Waiting for response
-          const phases = ['Processing image', 'Analyzing with AI', 'Waiting for response'];
+          let loadingPhase = 0;
+          const phases = [
+            'Processing image',
+            'Analyzing with AI',
+            'Waiting for response',
+            'Still processing',
+            'Almost there'
+          ];
+          const phaseStartTime = Date.now();
           loadingInterval.current = setInterval(() => {
             dotCount = (dotCount + 1) % 4;
-            if (dotCount === 0 && loadingPhase < phases.length - 1) {
-              loadingPhase++;
+            const elapsedSeconds = Math.floor((Date.now() - phaseStartTime) / 1000);
+
+            // Progress through phases based on elapsed time
+            if (elapsedSeconds >= 20 && loadingPhase < 4) {
+              loadingPhase = 4;
+            } else if (elapsedSeconds >= 12 && loadingPhase < 3) {
+              loadingPhase = 3;
+            } else if (elapsedSeconds >= 6 && loadingPhase < 2) {
+              loadingPhase = 2;
+            } else if (elapsedSeconds >= 3 && loadingPhase < 1) {
+              loadingPhase = 1;
             }
+
             setLoadingText(phases[loadingPhase] + '.'.repeat(dotCount + 1));
           }, 500);
 
           timeoutRef.current = setTimeout(() => {
             setIsProcessing(false);
-            setLoadingText('Server Error...');
+            setLoadingText('Server Timeout - Please try again');
             if (loadingInterval.current) clearInterval(loadingInterval.current);
             // Clear global window variables on timeout
-            (window as any).__ocrLoadingText = 'Server Error...';
+            (window as any).__ocrLoadingText = 'Server Timeout - Please try again';
             (window as any).__ocrIsProcessing = false;
             // Reset file input to allow re-use
             if (fileInputRef.current) {
@@ -170,10 +187,10 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
             }
             toast({
               title: 'Processing Timeout',
-              description: 'No response from server after 15 seconds.',
+              description: 'The server is taking too long. This may be due to high API traffic. Please try again.',
               variant: 'destructive',
             });
-          }, 15000);
+          }, 30000);
 
           // Process the optimized image (with photo extraction setting)
           const productInfo = await processImageForManualEntry(optimizedImageData, extractProductPhotos);
@@ -196,7 +213,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
               cropArea: productInfo.cropArea,
               isPerKg: productInfo.isPerKg
             });
-            
+
             if (productInfo.productImage) {
               console.log('🖼️ Using Gemini-provided product image with crop coordinates');
               thumbnail = await createProductThumbnail(productInfo.productImage, productInfo.cropArea);

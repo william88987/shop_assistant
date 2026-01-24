@@ -36,7 +36,7 @@ const PRODUCT_SUGGESTIONS: ProductSuggestion[] = [
   },
   {
     name: "Coca Cola Zero",
-    category: "Beverages", 
+    category: "Beverages",
     commonPrices: [1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 3.00, 3.50, 4.00, 5.00, 6.00, 7.00, 8.00, 9.00, 10.00, 11.25]
   },
   {
@@ -109,10 +109,10 @@ const PRODUCT_SUGGESTIONS: ProductSuggestion[] = [
 // Get product suggestions based on partial input
 export const getProductSuggestions = (input: string): ProductSuggestion[] => {
   if (!input.trim()) return PRODUCT_SUGGESTIONS.slice(0, 5); // Return top 5 if no input
-  
+
   const lowerInput = input.toLowerCase();
   return PRODUCT_SUGGESTIONS
-    .filter(product => 
+    .filter(product =>
       product.name.toLowerCase().includes(lowerInput) ||
       product.category.toLowerCase().includes(lowerInput)
     )
@@ -121,14 +121,14 @@ export const getProductSuggestions = (input: string): ProductSuggestion[] => {
 
 // Get price suggestions for a product
 export const getPriceSuggestions = (productName: string): number[] => {
-  const product = PRODUCT_SUGGESTIONS.find(p => 
+  const product = PRODUCT_SUGGESTIONS.find(p =>
     p.name.toLowerCase() === productName.toLowerCase()
   );
-  
+
   if (product) {
     return product.commonPrices;
   }
-  
+
   // Return common price ranges if no specific product found
   return [1.00, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00, 8.25, 8.50, 8.75, 9.00, 9.25, 9.50, 9.75, 10.00, 11.25];
 };
@@ -157,19 +157,19 @@ const detectDiscount = (text: string): { type: "bulk_price" | "buy_x_get_y", qua
     for (const match of matches) {
       const quantity = parseInt(match[1], 10);
       const value = parseFloat(match[2].replace(',', '.'));
-      
+
       // Check if this is a unit price indicator (not a discount)
-      const isUnitPrice = unitPriceIndicators.some(indicator => 
-        indicator.test(text) || 
+      const isUnitPrice = unitPriceIndicators.some(indicator =>
+        indicator.test(text) ||
         text.toLowerCase().includes('each') ||
         text.toLowerCase().includes('per unit')
       );
-      
+
       if (isUnitPrice) {
         console.log('Skipping unit price indicator:', match[0]);
         continue;
       }
-      
+
       // Determine discount type
       if (match[0].includes('€') || match[2].includes('.') || match[2].includes(',')) {
         // Type 1: bulk_price
@@ -190,7 +190,7 @@ const detectDiscount = (text: string): { type: "bulk_price" | "buy_x_get_y", qua
       }
     }
   }
-  
+
   return null;
 };
 
@@ -198,10 +198,10 @@ const detectDiscount = (text: string): { type: "bulk_price" | "buy_x_get_y", qua
 const parseProductInfo = (text: string): { productName: string; price: number; discount?: { type: "bulk_price" | "buy_x_get_y", quantity: number, value: number, display: string }; isPerKg?: boolean } => {
   console.log("=== Starting Text Parsing ===");
   console.log("Original text:", text);
-  
+
   const cleanedText = preprocessText(text);
   console.log("Cleaned text:", cleanedText);
-  
+
   const lines = cleanedText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   console.log("Lines after splitting:", lines);
 
@@ -223,10 +223,10 @@ const parseProductInfo = (text: string): { productName: string; price: number; d
       console.log(`[DEBUG] Line ${idx} contains 'NOW':`, line);
     }
   });
-  
+
   let productName = "";
   let price = 0;
-  
+
   // Enhanced price detection patterns
   const pricePatterns = [
     /NOW\s*€\s*(\d+[.,]\d{2})/gi, // NOW €1.49
@@ -245,7 +245,7 @@ const parseProductInfo = (text: string): { productName: string; price: number; d
     /WAS\s*(\d+[.,]\d{2})/gi, // WAS 1.49
   ];
 
-  let allPriceMatches: Array<{price: number, line: string, index: number, pattern: string, isNow?: boolean, isWas?: boolean}> = [];
+  let allPriceMatches: Array<{ price: number, line: string, index: number, pattern: string, isNow?: boolean, isWas?: boolean }> = [];
 
   // Collect all price matches
   lines.forEach((line, index) => {
@@ -255,7 +255,7 @@ const parseProductInfo = (text: string): { productName: string; price: number; d
       console.log(`Skipping line ${index} due to non-euro currency`);
       return;
     }
-    
+
     pricePatterns.forEach((pattern, patternIndex) => {
       const matches = Array.from(line.matchAll(pattern));
       if (matches.length > 0) {
@@ -266,12 +266,12 @@ const parseProductInfo = (text: string): { productName: string; price: number; d
         let priceValue = 0;
         let isNow = false;
         let isWas = false;
-        
+
         console.log(`Processing match:`, match);
         // Allow matches with two decimals or cents, and not immediately followed by a slash
         if (match[0] &&
-            (/\d+[.,]\d{2}/.test(match[0]) || /\d+[cC]/.test(match[0])) &&
-            !/\d+[.,]\d{2}\//.test(match[0])) {
+          (/\d+[.,]\d{2}/.test(match[0]) || /\d+[cC]/.test(match[0])) &&
+          !/\d+[.,]\d{2}\//.test(match[0])) {
           if (patternIndex === 1 || patternIndex === 11) { // NOW 40c or WAS 40c
             priceValue = parseInt(match[1], 10) / 100;
           } else if (patternIndex === 8) { // "€ 2 99" format
@@ -410,7 +410,7 @@ const parseProductInfo = (text: string): { productName: string; price: number; d
     }
   }
   price = selectedPrice;
-  
+
   // --- UI/UX: If no product name, still return price ---
   if (!productName) {
     console.log("No product name found, but price extracted:", price);
@@ -419,29 +419,29 @@ const parseProductInfo = (text: string): { productName: string; price: number; d
   // Clean product name by removing unwanted terms and patterns
   const cleanProductName = (name: string): string => {
     if (!name) return name;
-    
+
     let cleaned = name;
-    
+
     // Remove specific store names (case insensitive)
     cleaned = cleaned.replace(/dunnes\s+stores/gi, '');
     cleaned = cleaned.replace(/simply\s+better/gi, '');
     cleaned = cleaned.replace(/total\s+price/gi, '');
-    
+
     // Remove special characters like = or |
     cleaned = cleaned.replace(/[=|]/g, '');
-    
+
     // Remove long numbers (barcodes) - 8+ digits
     cleaned = cleaned.replace(/\b\d{8,}\b/g, '');
-    
+
     // Clean up extra whitespace
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
-    
+
     return cleaned;
   };
-  
+
   // Apply cleaning to the product name
   productName = cleanProductName(productName);
-  
+
   console.log("=== Final Result ===");
   console.log("Product Name:", productName);
   console.log("Price:", price);
@@ -452,7 +452,7 @@ const parseProductInfo = (text: string): { productName: string; price: number; d
     console.log("Per-KG pricing:", isPerKg);
   }
   console.log("===================");
-  
+
   const result: { productName: string; price: number; discount?: { type: "bulk_price" | "buy_x_get_y", quantity: number, value: number, display: string }; isPerKg?: boolean } = { productName, price };
   if (discount) {
     result.discount = discount;
@@ -475,11 +475,15 @@ const preprocessText = (text: string): string => {
 
 // Process image using server-side extraction
 export const processImageForManualEntry = async (imageData: string, extractPhoto: boolean = true): Promise<ProductInfo> => {
+  const startTime = Date.now();
+
   try {
-    console.log("Processing image with server-side extraction...");
+    console.log("🚀 Processing image with server-side extraction...");
     console.log(`📸 Photo extraction: ${extractPhoto ? 'enabled' : 'disabled (faster)'}`);
-    
+    console.log(`📏 Image data size: ${Math.round(imageData.length / 1024)}KB`);
+
     // Call server-side extraction endpoint
+    const fetchStart = Date.now();
     const response = await fetch('/api/ocr', {
       method: 'POST',
       headers: {
@@ -487,22 +491,33 @@ export const processImageForManualEntry = async (imageData: string, extractPhoto
       },
       body: JSON.stringify({ imageData, extractPhoto })
     });
-    
+    console.log(`📡 Server response received in ${Date.now() - fetchStart}ms`);
+
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Server error: ${response.status} ${response.statusText}`, errorText);
+
+      // Check for rate limiting
+      if (response.status === 429 || errorText.includes('429') || errorText.includes('RESOURCE_EXHAUSTED')) {
+        throw new Error('API rate limit exceeded. Please wait a moment and try again.');
+      }
+
       throw new Error(`Extraction request failed: ${response.status} ${response.statusText}`);
     }
-    
+
     const result = await response.json();
+    const totalTime = Date.now() - startTime;
+    console.log(`⏱️ Total extraction time: ${totalTime}ms`);
     console.log("Server extraction result:", result);
-    
+
     if (result.success) {
-      console.log("Extraction successful:", {
+      console.log("✅ Extraction successful:", {
         productName: result.productName,
         price: result.price,
         backend: result.backend,
         fallbackUsed: result.fallbackUsed
       });
-      
+
       // Log backend information
       if (result.backend) {
         console.log(`🔧 Used backend: ${result.backend}`);
@@ -510,12 +525,12 @@ export const processImageForManualEntry = async (imageData: string, extractPhoto
           console.log(`⚠️ Fallback used: ${result.fallbackReason}`);
         }
       }
-      
+
       // Special handling for image identification (product name found but no price)
       if (result.productName && result.price === 0 && result.confidence > 0.2) {
         console.log("🖼️ Product identified from image without price text:", result.productName);
       }
-      
+
       const productInfo = {
         productName: result.productName || "",
         price: result.price || 0,
@@ -525,19 +540,25 @@ export const processImageForManualEntry = async (imageData: string, extractPhoto
         productImage: result.productImage,
         cropArea: result.cropArea
       };
-      
+
       return productInfo;
     } else {
-      console.log("No information extracted from image");
+      // Check if error indicates rate limiting
+      if (result.error && (result.error.includes('429') || result.error.includes('rate') || result.error.includes('RESOURCE_EXHAUSTED'))) {
+        console.warn("⚠️ Rate limit error detected in response");
+      }
+
+      console.log("⚠️ No information extracted from image");
       return {
         productName: "",
         price: 0,
         confidence: 0.1
       };
     }
-    
+
   } catch (error) {
-    console.error("Server extraction error:", error);
+    const totalTime = Date.now() - startTime;
+    console.error(`❌ Server extraction error after ${totalTime}ms:`, error);
     console.log("Falling back to manual entry due to extraction failure");
     return {
       productName: "",

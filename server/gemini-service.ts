@@ -61,11 +61,12 @@ export class GeminiService {
       const imageBuffer = Buffer.from(base64Image, 'base64');
       let imageDimensions = '512x512'; // default assumption
       try {
+        const dimStart = Date.now();
         const sharp = (await import('sharp')).default;
         const metadata = await sharp(imageBuffer).metadata();
         if (metadata.width && metadata.height) {
           imageDimensions = `${metadata.width}x${metadata.height}`;
-          console.log(`📐 Image dimensions: ${imageDimensions}`);
+          console.log(`📐 Image dimensions: ${imageDimensions} (extracted in ${Date.now() - dimStart}ms)`);
         }
       } catch (error) {
         console.warn('Could not extract image dimensions, using default');
@@ -113,20 +114,56 @@ Example: {"productName":"Baby Carrot 200g","price":1.79,"confidence":0.9,"discou
 
       const url = `${this.baseUrl}/${this.config.geminiModel}:generateContent?key=${this.config.geminiApiKey}`;
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
+      // Retry logic with exponential backoff for rate limiting
+      const maxRetries = 3;
+      const baseDelay = 1000; // 1 second
+      let lastError: Error | null = null;
+      let result: any = null;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            const delay = baseDelay * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+            console.log(`⏳ Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms delay...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+
+          const fetchStart = Date.now();
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
+          });
+          console.log(`📡 Gemini API fetch completed in ${Date.now() - fetchStart}ms`);
+
+          if (response.status === 429) {
+            const errorText = await response.text();
+            console.warn(`⚠️ Rate limited (429), attempt ${attempt + 1}/${maxRetries}`);
+            lastError = new Error(`Rate limited: ${errorText}`);
+            continue; // Retry
+          }
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+          }
+
+          result = await response.json();
+          break; // Success, exit retry loop
+        } catch (fetchError) {
+          lastError = fetchError instanceof Error ? fetchError : new Error(String(fetchError));
+          if (attempt < maxRetries - 1) {
+            console.warn(`⚠️ Fetch error, will retry: ${lastError.message}`);
+            continue;
+          }
+        }
       }
 
-      const result = await response.json();
+      if (!result) {
+        throw lastError || new Error('Failed to get response from Gemini API after retries');
+      }
       console.log('Gemini API response:', JSON.stringify(result, null, 2));
 
       // Extract the response text
@@ -256,10 +293,10 @@ Example: {"productName":"Baby Carrot 200g","price":1.79,"confidence":0.9,"discou
         parsedData.discount.quantity &&
         parsedData.discount.value &&
         (parsedData.discount.type === 'bulk_price' || parsedData.discount.type === 'buy_x_get_y')) {
-        
+
         let discountType = parsedData.discount.type;
         let discountValue = parsedData.discount.value;
-        
+
         // Validate and fix discount type based on value
         // For buy_x_get_y: value must be < quantity (e.g., "3 for 2" means value=2, quantity=3)
         // For bulk_price: value is a price (e.g., "3 for €6" means value=6.00)
@@ -269,7 +306,7 @@ Example: {"productName":"Baby Carrot 200g","price":1.79,"confidence":0.9,"discou
           console.log(`⚠️ Correcting discount type: value (${discountValue}) >= quantity (${parsedData.discount.quantity}), switching to bulk_price`);
           discountType = 'bulk_price';
         }
-        
+
         result_response.discount = {
           type: discountType,
           quantity: parsedData.discount.quantity,

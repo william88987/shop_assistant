@@ -5,7 +5,7 @@ import { storageService } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Plus, Edit2, Trash2, ShoppingBag, Settings, Trash, DollarSign, Image, ImageOff, Images, Sparkles, History } from "lucide-react";
+import { Plus, Edit2, Trash2, ShoppingBag, Settings, DollarSign, Image, ImageOff, Images, Sparkles, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -98,14 +98,7 @@ export default function MainPage() {
     window.location.reload();
   };
 
-  const handleClearAutocomplete = () => {
-    localStorage.removeItem('shopping_item_names');
-    toast({
-      title: "Autocomplete cleared",
-      description: "All saved item names have been removed.",
-      variant: "default"
-    });
-  };
+
 
   const handleChangeCurrency = () => {
     localStorage.setItem('currencySymbol', newCurrencySymbol);
@@ -280,10 +273,7 @@ export default function MainPage() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Configuration</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleClearAutocomplete}>
-                  <Trash className="mr-2 h-4 w-4" />
-                  Clear Autocomplete
-                </DropdownMenuItem>
+
                 <DropdownMenuItem onClick={() => setShowCurrencyDialog(true)}>
                   <DollarSign className="mr-2 h-4 w-4" />
                   Change Currency ({currencySymbol})
