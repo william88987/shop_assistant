@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { ShoppingList } from "@shared/schema";
 import { storageService } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Plus, Edit2, Trash2, ShoppingBag, Settings, DollarSign, Image, ImageOff, Images, Sparkles, History } from "lucide-react";
+import { Plus, Edit2, Trash2, ShoppingBag, Settings, DollarSign, Image, ImageOff, Images, Sparkles, History, Download, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -26,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { exportShoppingLists, importShoppingLists } from "@/lib/export-import-service";
 
 export default function MainPage() {
   const [lists, setLists] = useState<ShoppingList[]>([]);
@@ -35,6 +36,9 @@ export default function MainPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [extractProductPhotos, setExtractProductPhotos] = useState(true);
   const [showClearPhotosDialog, setShowClearPhotosDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const LISTS_PER_PAGE = 10;
@@ -194,6 +198,73 @@ export default function MainPage() {
     });
   };
 
+  const handleExport = async () => {
+    try {
+      await exportShoppingLists();
+      toast({
+        title: "Export successful",
+        description: "Shopping lists exported to zip file",
+        variant: "default"
+      });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setImportFile(file);
+      setShowImportDialog(true);
+    }
+    // Reset input so same file can be selected again
+    event.target.value = '';
+  };
+
+  const handleImport = async (mergeMode: boolean) => {
+    if (!importFile) return;
+
+    try {
+      const result = await importShoppingLists(importFile, mergeMode);
+
+      if (result.success) {
+        // Refresh lists
+        const savedLists = storageService.getAllLists();
+        const sortedLists = savedLists.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setLists(sortedLists);
+
+        toast({
+          title: "Import successful",
+          description: `Imported ${result.listsImported} list${result.listsImported !== 1 ? 's' : ''} with ${result.photosRestored} photo${result.photosRestored !== 1 ? 's' : ''}`,
+          variant: "default"
+        });
+      } else {
+        toast({
+          title: "Import failed",
+          description: result.error || "Unknown error occurred",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Import failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    }
+
+    setShowImportDialog(false);
+    setImportFile(null);
+  };
+
   return (
     <div className="max-w-md mx-auto bg-white min-h-screen">
       <div className="p-4">
@@ -293,6 +364,16 @@ export default function MainPage() {
                 <DropdownMenuItem onClick={handleClearAIHistory}>
                   <History className="mr-2 h-4 w-4" />
                   Clear AI History
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Data Management</DropdownMenuLabel>
+                <DropdownMenuItem onClick={handleExport}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Shopping Lists
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleImportClick}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import Shopping Lists
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -516,6 +597,68 @@ export default function MainPage() {
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Clear All Photos
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file input for import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept=".zip"
+        onChange={handleFileSelected}
+        className="hidden"
+      />
+
+      {/* Import Confirmation Dialog */}
+      {showImportDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50"
+            onClick={() => {
+              setShowImportDialog(false);
+              setImportFile(null);
+            }}
+          />
+
+          {/* Modal Content */}
+          <div className="relative bg-white rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Import Shopping Lists</h2>
+              <p className="text-sm text-gray-600 mt-2">
+                You are about to import: <span className="font-medium">{importFile?.name}</span>
+              </p>
+              <p className="text-sm text-gray-600 mt-2">
+                Choose how to handle existing data:
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <Button
+                onClick={() => handleImport(true)}
+                className="w-full"
+              >
+                Merge with Existing
+              </Button>
+              <Button
+                onClick={() => handleImport(false)}
+                variant="outline"
+                className="w-full border-destructive text-destructive hover:bg-destructive/10"
+              >
+                Replace All Data
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowImportDialog(false);
+                  setImportFile(null);
+                }}
+                className="w-full"
+              >
+                Cancel
               </Button>
             </div>
           </div>
