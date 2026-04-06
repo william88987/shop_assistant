@@ -80,12 +80,13 @@ export class GeminiService {
 
 productName: Clean name + weight (e.g. "Greek Yogurt 450g"). If no text, identify visually.
 price: Current unit price. Use "NOW"/"ONLY" price, NOT "WAS" price. IGNORE "SAVE €X" and "WAS €X". Convert "40c"→0.40. 0 if none.
-isPerKg: true only if "PER KG" without weight/total.
+isPerKg: true ONLY if the item is sold loose by weight. False for packaged items with a specific weight (e.g. "500GM", "100GM"). Ignore small "€X per kg" reference prices at the bottom of the tag.
 discount: Check yellow labels/packaging for multi-buy offers.
   - bulk_price: "X for €Y" where Y is a PRICE. Example: "3 for €6" → {"type":"bulk_price","quantity":3,"value":6.0,"display":"(3 for €6.00)"}
   - buy_x_get_y: "X for Y" where Y < X (pay for fewer). Example: "3 for 2" → {"type":"buy_x_get_y","quantity":3,"value":2,"display":"(3 for 2)"}
   - IMPORTANT: If value has € or is a price amount, use bulk_price. Only use buy_x_get_y when value < quantity.
   - Extract BOTH unit price AND discount.
+  - Discount price should never higher than unit price
 confidence: 0.8-1.0 (text), 0.4-0.6 (visual).
 cropArea: Pick ONE prominent item (not shelf). Ignore labels. Return center % and size %.
   - centerX: horizontal center (0-100%)

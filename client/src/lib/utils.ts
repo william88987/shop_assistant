@@ -13,24 +13,28 @@ export function calculateItemTotal(item: ShoppingItem): number {
   }
 
   const { type, quantity: discountQty, value } = item.discount;
-  
+
   if (item.quantity < discountQty) {
     // Not enough quantity for discount, use regular price
     return item.price * item.quantity;
   }
 
+  const regularTotal = item.price * item.quantity;
+
   if (type === "bulk_price") {
     // Type 1: "3 for €10" - calculate how many complete sets + remainder
     const completeSets = Math.floor(item.quantity / discountQty);
     const remainder = item.quantity % discountQty;
-    return (completeSets * value) + (remainder * item.price);
-  } 
-  
+    const discountedTotal = (completeSets * value) + (remainder * item.price);
+    return Math.min(discountedTotal, regularTotal);
+  }
+
   if (type === "buy_x_get_y") {
     // Type 2: "3 for 2" - pay for fewer items than you get
     const completeSets = Math.floor(item.quantity / discountQty);
     const remainder = item.quantity % discountQty;
-    return (completeSets * value * item.price) + (remainder * item.price);
+    const discountedTotal = (completeSets * value * item.price) + (remainder * item.price);
+    return Math.min(discountedTotal, regularTotal);
   }
 
   // Fallback to regular calculation
@@ -45,10 +49,10 @@ export function canApplyDiscount(item: ShoppingItem): boolean {
 // Apply or remove discount from an item
 export function toggleDiscount(item: ShoppingItem): ShoppingItem {
   if (!item.discount) return item;
-  
+
   const discountApplied = canApplyDiscount(item) ? !item.discountApplied : false;
-  const total = discountApplied ? 
-    calculateItemTotal({ ...item, discountApplied: true }) : 
+  const total = discountApplied ?
+    calculateItemTotal({ ...item, discountApplied: true }) :
     item.price * item.quantity;
 
   return {
