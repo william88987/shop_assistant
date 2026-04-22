@@ -5,8 +5,9 @@ import { storageService } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Plus, Edit2, Trash2, ShoppingBag, Settings, DollarSign, Image, ImageOff, Images, Sparkles, History, Download, Upload } from "lucide-react";
+import { Plus, Edit2, Trash2, ShoppingBag, Settings, DollarSign, Image, ImageOff, Images, Sparkles, History, Download, Upload, ListChecks } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { EditAutocompleteDialog } from "@/components/edit-autocomplete-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +39,7 @@ export default function MainPage() {
   const [showClearPhotosDialog, setShowClearPhotosDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [showEditAutocompleteDialog, setShowEditAutocompleteDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -366,6 +368,12 @@ export default function MainPage() {
                   Clear AI History
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuLabel>Item Management</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setShowEditAutocompleteDialog(true)}>
+                  <ListChecks className="mr-2 h-4 w-4" />
+                  Edit Autocomplete Items
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuLabel>Data Management</DropdownMenuLabel>
                 <DropdownMenuItem onClick={handleExport}>
                   <Download className="mr-2 h-4 w-4" />
@@ -664,6 +672,12 @@ export default function MainPage() {
           </div>
         </div>
       )}
+      {/* Edit Autocomplete Dialog */}
+      <EditAutocompleteDialog
+        open={showEditAutocompleteDialog}
+        onClose={() => setShowEditAutocompleteDialog(false)}
+        currencySymbol={currencySymbol}
+      />
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { ShoppingList, ShoppingItem } from "@shared/schema";
 
 const STORAGE_KEY = "shopping_lists";
+const AUTOCOMPLETE_EXCLUSIONS_KEY = "autocomplete_exclusions";
+const AUTOCOMPLETE_PRICE_OVERRIDES_KEY = "autocomplete_price_overrides";
 
 // Type for item with price
 export interface ItemWithPrice {
@@ -64,38 +66,75 @@ export class LocalStorageService {
     this.saveList(list);
   }
 
-  // Item names autocomplete functionality - now pulls from shopping list history
-  // These methods maintain backwards compatibility but data comes from shopping lists
+  // --- Autocomplete exclusion list management ---
 
-  getItemNames(): string[] {
+  getAutocompleteExclusions(): Set<string> {
     try {
-      const lists = this.getAllLists();
-      const itemNames = new Set<string>();
-
-      lists.forEach(list => {
-        list.items.forEach(item => {
-          // Clean the item name (remove weight patterns like "(0.25kg)")
-          const cleanedName = item.name
-            .replace(/\s*\([0-9.]+kg\)/gi, '')
-            .replace(/\s*\([^)]*for[^)]*\)/gi, '') // Remove discount patterns
-            .trim();
-
-          if (cleanedName && cleanedName.length > 0) {
-            itemNames.add(cleanedName);
-          }
-        });
-      });
-
-      // Sort alphabetically
-      return Array.from(itemNames).sort();
+      const data = localStorage.getItem(AUTOCOMPLETE_EXCLUSIONS_KEY);
+      return data ? new Set(JSON.parse(data)) : new Set();
     } catch (error) {
-      console.error("Error getting item names from shopping lists:", error);
-      return [];
+      console.error("Error reading autocomplete exclusions:", error);
+      return new Set();
     }
   }
 
-  // Get all items with their prices from shopping list history
-  getItemsWithPrices(): ItemWithPrice[] {
+  saveAutocompleteExclusions(exclusions: Set<string>): void {
+    try {
+      localStorage.setItem(AUTOCOMPLETE_EXCLUSIONS_KEY, JSON.stringify(Array.from(exclusions)));
+    } catch (error) {
+      console.error("Error saving autocomplete exclusions:", error);
+    }
+  }
+
+  excludeAutocompleteItem(itemName: string): void {
+    const exclusions = this.getAutocompleteExclusions();
+    exclusions.add(itemName.toLowerCase());
+    this.saveAutocompleteExclusions(exclusions);
+  }
+
+  restoreAutocompleteItem(itemName: string): void {
+    const exclusions = this.getAutocompleteExclusions();
+    exclusions.delete(itemName.toLowerCase());
+    this.saveAutocompleteExclusions(exclusions);
+  }
+
+  // --- Autocomplete price override management ---
+
+  getAutocompletePriceOverrides(): Record<string, number> {
+    try {
+      const data = localStorage.getItem(AUTOCOMPLETE_PRICE_OVERRIDES_KEY);
+      return data ? JSON.parse(data) : {};
+    } catch (error) {
+      console.error("Error reading price overrides:", error);
+      return {};
+    }
+  }
+
+  saveAutocompletePriceOverride(itemName: string, price: number): void {
+    try {
+      const overrides = this.getAutocompletePriceOverrides();
+      overrides[itemName.toLowerCase()] = price;
+      localStorage.setItem(AUTOCOMPLETE_PRICE_OVERRIDES_KEY, JSON.stringify(overrides));
+    } catch (error) {
+      console.error("Error saving price override:", error);
+    }
+  }
+
+  removeAutocompletePriceOverride(itemName: string): void {
+    try {
+      const overrides = this.getAutocompletePriceOverrides();
+      delete overrides[itemName.toLowerCase()];
+      localStorage.setItem(AUTOCOMPLETE_PRICE_OVERRIDES_KEY, JSON.stringify(overrides));
+    } catch (error) {
+      console.error("Error removing price override:", error);
+    }
+  }
+
+  // --- Item names autocomplete functionality ---
+  // Pulls from shopping list history, respecting exclusions and price overrides
+
+  // Get raw (unfiltered) items with prices from shopping list history
+  getRawItemsWithPrices(): ItemWithPrice[] {
     try {
       const lists = this.getAllLists();
       const itemsMap = new Map<string, { name: string; price: number }>();
@@ -117,8 +156,44 @@ export class LocalStorageService {
         });
       });
 
+      // Apply price overrides
+      const priceOverrides = this.getAutocompletePriceOverrides();
+      for (const [key, override] of Object.entries(priceOverrides)) {
+        const existing = itemsMap.get(key);
+        if (existing) {
+          itemsMap.set(key, { ...existing, price: override });
+        }
+      }
+
       // Convert to array and sort by name
       return Array.from(itemsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+      console.error("Error getting items with prices from shopping lists:", error);
+      return [];
+    }
+  }
+
+  getItemNames(): string[] {
+    try {
+      const exclusions = this.getAutocompleteExclusions();
+      const allItems = this.getRawItemsWithPrices();
+
+      return allItems
+        .filter(item => !exclusions.has(item.name.toLowerCase()))
+        .map(item => item.name)
+        .sort();
+    } catch (error) {
+      console.error("Error getting item names from shopping lists:", error);
+      return [];
+    }
+  }
+
+  // Get all items with their prices from shopping list history (filtered)
+  getItemsWithPrices(): ItemWithPrice[] {
+    try {
+      const exclusions = this.getAutocompleteExclusions();
+      return this.getRawItemsWithPrices()
+        .filter(item => !exclusions.has(item.name.toLowerCase()));
     } catch (error) {
       console.error("Error getting items with prices from shopping lists:", error);
       return [];
