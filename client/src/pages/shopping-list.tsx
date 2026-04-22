@@ -107,6 +107,12 @@ export default function ShoppingListPage() {
     setCurrencySymbol(savedCurrency);
   }, [params?.id, setLocation, toast]);
 
+  const handleExcludeAutocompleteItem = (itemName: string) => {
+    storageService.excludeAutocompleteItem(itemName);
+    setItemNameSuggestions(storageService.getItemNames());
+    setItemsWithPrices(storageService.getItemsWithPrices());
+  };
+
   const updateList = (updatedList: ShoppingList) => {
     const totalAmount = updatedList.items
       .filter(item => !item.onHold)
@@ -1179,6 +1185,7 @@ export default function ShoppingListPage() {
                 value={newItem.name}
                 onChange={(value) => setNewItem(prev => ({ ...prev, name: value }))}
                 onSelectItem={(item) => setNewItem(prev => ({ ...prev, name: item.name, price: item.price }))}
+                onExcludeItem={handleExcludeAutocompleteItem}
                 suggestions={itemNameSuggestions}
                 itemsWithPrices={itemsWithPrices}
                 placeholder={ocrIsProcessing ? (ocrLoadingText || "Loading...") : "Item name"}
@@ -1367,6 +1374,7 @@ export default function ShoppingListPage() {
                           value={editForm.name || ""}
                           onChange={(value) => setEditForm(prev => ({ ...prev, name: value }))}
                           onSelectItem={(item) => setEditForm(prev => ({ ...prev, name: item.name, price: item.price }))}
+                          onExcludeItem={handleExcludeAutocompleteItem}
                           suggestions={itemNameSuggestions}
                           itemsWithPrices={itemsWithPrices}
                           placeholder="Item name"

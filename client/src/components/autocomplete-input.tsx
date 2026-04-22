@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { Trash2 } from "lucide-react";
 
 interface ItemWithPrice {
   name: string;
@@ -11,6 +12,7 @@ interface AutocompleteInputProps {
   value: string;
   onChange: (value: string) => void;
   onSelectItem?: (item: ItemWithPrice) => void;
+  onExcludeItem?: (itemName: string) => void;
   suggestions: string[];
   itemsWithPrices?: ItemWithPrice[];
   placeholder?: string;
@@ -23,6 +25,7 @@ export function AutocompleteInput({
   value,
   onChange,
   onSelectItem,
+  onExcludeItem,
   suggestions,
   itemsWithPrices,
   placeholder,
@@ -150,16 +153,30 @@ export function AutocompleteInput({
               key={item.name}
               onClick={() => handleSelectItem(item)}
               className={cn(
-                "px-4 py-2 cursor-pointer text-sm hover:bg-gray-100 transition-colors flex justify-between items-center",
+                "px-4 py-2 cursor-pointer text-sm hover:bg-gray-100 transition-colors flex justify-between items-center gap-1",
                 index === selectedIndex && "bg-blue-50 text-blue-700"
               )}
             >
-              <span>{item.name}</span>
-              {item.price > 0 && (
-                <span className="text-gray-500 text-xs ml-2">
-                  {currencySymbol}{item.price.toFixed(2)}
-                </span>
-              )}
+              <span className="flex-1 truncate">{item.name}</span>
+              <span className="flex items-center gap-1 shrink-0">
+                {item.price > 0 && (
+                  <span className="text-gray-500 text-xs">
+                    {currencySymbol}{item.price.toFixed(2)}
+                  </span>
+                )}
+                {onExcludeItem && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onExcludeItem(item.name);
+                    }}
+                    className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors"
+                    title="Remove from suggestions"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </span>
             </div>
           ))}
         </div>
