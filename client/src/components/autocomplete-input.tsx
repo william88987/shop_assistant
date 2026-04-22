@@ -38,10 +38,33 @@ export function AutocompleteInput({
   // Use itemsWithPrices if provided, otherwise fall back to suggestions
   const itemsList: ItemWithPrice[] = itemsWithPrices || suggestions.map(name => ({ name, price: 0 }));
 
-  // Filter suggestions based on input value
-  const filteredItems = itemsList.filter(item =>
-    item.name.toLowerCase().includes(value.toLowerCase()) && item.name.toLowerCase() !== value.toLowerCase()
-  ).slice(0, 5); // Limit to 5 suggestions
+  // Filter and rank suggestions based on input value
+  const filteredItems = (() => {
+    const query = value.toLowerCase().trim();
+    if (!query) return [];
+
+    return itemsList
+      .filter(item =>
+        item.name.toLowerCase().includes(query) && item.name.toLowerCase() !== query
+      )
+      .map(item => {
+        const nameLower = item.name.toLowerCase();
+        let score: number;
+        if (nameLower.startsWith(query)) {
+          // Highest priority: query matches the start of the item name
+          score = 0;
+        } else {
+          // Check if query matches the start of any word in the item name
+          const words = nameLower.split(/\s+/);
+          const startsWord = words.some(word => word.startsWith(query));
+          score = startsWord ? 1 : 2;
+        }
+        return { item, score };
+      })
+      .sort((a, b) => a.score - b.score || a.item.name.localeCompare(b.item.name))
+      .map(entry => entry.item)
+      .slice(0, 8);
+  })();
 
   useEffect(() => {
     setSelectedIndex(-1);
